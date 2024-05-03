@@ -73,11 +73,23 @@ public final class Parser {
      */
     public Ast.Global parseList() throws ParseException {
         String name;
+        String type = "";
+        boolean hastype = false;
         if(!peek(Token.Type.IDENTIFIER)){
             throw new ParseException("No identifier after List statement declaration",tokens.index);
         }
         name = tokens.get(0).getLiteral();
         match(Token.Type.IDENTIFIER);
+
+        if(match(":")){
+            if(!peek(Token.Type.IDENTIFIER)){
+                throw new ParseException("No type after :", tokens.index);
+            }
+            type = tokens.get(0).getLiteral();
+            match(Token.Type.IDENTIFIER);
+            hastype = true;
+        }
+
         if(!match("=","[")){
             throw new ParseException("No [ after List statement declaration",tokens.index);
         }
@@ -87,8 +99,20 @@ public final class Parser {
         while (match(",")){
             values.add(parseExpression());
         }
-        Ast.Expression.PlcList ret = new Ast.Expression.PlcList(values);
-        throw new ParseException("list Statement not working yet",tokens.index);
+        if(!match("]")){
+            throw new ParseException("No ] after List statement declaration",tokens.index);
+        }
+
+        Ast.Expression.PlcList list = new Ast.Expression.PlcList(values);
+        //list.setType(Environment.Type.);
+        if(hastype){
+            Ast.Global ret = new Ast.Global(name, type, true, Optional.of(list));
+            return ret;
+        }
+        else {
+            Ast.Global ret = new Ast.Global(name, true, Optional.of(list));
+            return ret;
+        }
     }
 
     /**
@@ -104,16 +128,33 @@ public final class Parser {
         match(Token.Type.IDENTIFIER);
 
         Ast.Expression exp;
+        String type = "";
         if(match("=")){
             exp = parseExpression();
             Ast.Global ret = new Ast.Global(name, true, Optional.ofNullable(exp));
             return ret;
+        } else if (match(":")) {
+            type = tokens.get(0).getLiteral();
+            //System.out.println(type);
+            match(Token.Type.IDENTIFIER);
+            if(peek("=")) {
+                match("=");
+            }
+            else{
+                //throw new ParseException("Value must be defined for mutable",tokens.index);
+                Ast.Global ret = new Ast.Global(name, type, true, Optional.empty());
+                return ret;
+            }
+
+            exp = parseExpression();
+            Ast.Global ret = new Ast.Global(name, type, true, Optional.ofNullable(exp));
+            return ret;
         }
         else{
-            Ast.Global ret = new Ast.Global(name, true, Optional.empty());
+            //throw new ParseException("Value must be defined for mutable",tokens.index);
+            Ast.Global ret = new Ast.Global(name, type, true, Optional.empty());
+            return ret;
         }
-
-        throw new ParseException("mutable Statement not working yet",tokens.index);
     }
 
     /**
@@ -129,9 +170,24 @@ public final class Parser {
         match(Token.Type.IDENTIFIER);
 
         Ast.Expression exp;
+        String type = "";
         if(match("=")){
             exp = parseExpression();
             Ast.Global ret = new Ast.Global(name, false, Optional.ofNullable(exp));
+            return ret;
+        } else if (match(":")) {
+            type = tokens.get(0).getLiteral();
+            //System.out.println(type);
+            match(Token.Type.IDENTIFIER);
+            if(peek("=")) {
+                match("=");
+            }
+            else{
+                throw new ParseException("Value must be defined for immutable",tokens.index);
+            }
+
+            exp = parseExpression();
+            Ast.Global ret = new Ast.Global(name, type, false, Optional.ofNullable(exp));
             return ret;
         }
         else{
@@ -146,33 +202,55 @@ public final class Parser {
      * next tokens start a method, aka {@code FUN}.
      */
     public Ast.Function parseFunction() throws ParseException {
+        match("FUN");
         String name;
+        String type = "";
+        boolean hastype = false;
         if(!peek(Token.Type.IDENTIFIER)){
             throw new ParseException("No identifier after List statement declaration",tokens.index);
         }
         name = tokens.get(0).getLiteral();
+        //System.out.println(name);
         match(Token.Type.IDENTIFIER);
         if(!match("(")){
             throw new ParseException("No (",tokens.index);
         }
 
         List<String> values = new ArrayList<>();
+        List<String> parametertypes = new ArrayList<>();
         if(peek(Token.Type.IDENTIFIER)) {
 
             values.add(tokens.get(0).getLiteral());
             match(Token.Type.IDENTIFIER);
+            if(match(":")){
+                parametertypes.add(tokens.get(0).getLiteral());
+                match(Token.Type.IDENTIFIER);
+            }
             while (match(",")) {
                 if (!peek(Token.Type.IDENTIFIER)) {
                     throw new ParseException("Identifier missing", tokens.index);
                 }
                 values.add(tokens.get(0).getLiteral());
                 match(Token.Type.IDENTIFIER);
+                if(match(":")){
+                    parametertypes.add(tokens.get(0).getLiteral());
+                    match(Token.Type.IDENTIFIER);
+                }
             }
 
         }
         if (!match(")")) {
             throw new ParseException("No )", tokens.index);
         }
+
+        if(match(":")){
+            type = tokens.get(0).getLiteral();
+            //System.out.println(type);
+            match(Token.Type.IDENTIFIER);
+            hastype = true;
+        }
+
+
         if(!match("DO")){
             throw new ParseException("Missing DO",tokens.index);
         }
@@ -180,8 +258,15 @@ public final class Parser {
         if(!match("END")){
             throw new ParseException("Missing END",tokens.index);
         }
-        Ast.Function ret = new Ast.Function(name, values, statements);
-        return ret;
+        if(hastype){
+
+            Ast.Function ret = new Ast.Function(name, values, parametertypes, Optional.ofNullable(type), statements);
+            return ret;
+        }
+        else {
+            Ast.Function ret = new Ast.Function(name, values, statements);
+            return ret;
+        }
 
     }
 
@@ -191,7 +276,7 @@ public final class Parser {
      */
     public List<Ast.Statement> parseBlock() throws ParseException {
         List<Ast.Statement> statements = new ArrayList<>();
-        while(!peek("END") && !peek("DEFAULT")&& !peek(";")&& !peek("ELSE")){
+        while(!peek("END") && !peek("DEFAULT")&& !peek(";")&& !peek("ELSE")&& !peek("CASE")){
             statements.add(parseStatement());
         }
         return statements;
@@ -248,6 +333,8 @@ public final class Parser {
 
 
         String name;
+        String type= "";
+        boolean hastype = false;
         match("LET");
         if(peek(Token.Type.IDENTIFIER)){
             name = tokens.get(0).getLiteral();
@@ -259,6 +346,22 @@ public final class Parser {
         if(match(";")){
             Ast.Statement.Declaration state = new Ast.Statement.Declaration(name, Optional.empty());
             return state;
+        }
+
+        if(match(":")){
+            type = tokens.get(0).getLiteral();
+            match(Token.Type.IDENTIFIER);
+
+            if(match("=")){
+                Ast.Expression exp = parseExpression();
+                Ast.Statement.Declaration state = new Ast.Statement.Declaration(name, Optional.ofNullable(type), Optional.ofNullable(exp));
+                return state;
+            }
+            else{
+                Ast.Statement.Declaration state = new Ast.Statement.Declaration(name, Optional.ofNullable(type), Optional.empty());
+                return state;
+            }
+
         }
 
         if(match("=")){
@@ -374,9 +477,9 @@ public final class Parser {
                 throw new ParseException("No statement in Case statement",tokens.index);
             }
             List<Ast.Statement> statements = parseBlock();
-            if(!match(";")){
-                throw new ParseException("No termination in Case statement",tokens.index);
-            }
+            //if(!match(";")){
+            //    throw new ParseException("No termination in Case statement",tokens.index);
+            //}
 
             Ast.Statement.Case ret = new Ast.Statement.Case(Optional.ofNullable(exp), statements);
             return ret;
@@ -386,9 +489,9 @@ public final class Parser {
                 throw new ParseException("No statement in Case statement",tokens.index);
             }
             List<Ast.Statement> statements = parseBlock();
-            if(!match(";")){
-                throw new ParseException("No termination in Case statement",tokens.index);
-            }
+            //if(!match(";")){
+                //throw new ParseException("No termination in Case statement",tokens.index);
+            //}
 
             Ast.Statement.Case ret = new Ast.Statement.Case(Optional.empty(), statements);
             return ret;
@@ -431,6 +534,9 @@ public final class Parser {
         }
         Ast.Expression exp = parseExpression();
         Ast.Statement.Return ret = new Ast.Statement.Return(exp);
+        if(!match(";")){
+            throw new ParseException("No ; at end of Return statement",tokens.index);
+        }
         return ret;
     }
 
@@ -509,6 +615,7 @@ public final class Parser {
         {
             String operator = tokens.get(-1).getLiteral();
             Ast.Expression right = parsePrimaryExpression();
+
             left = new Ast.Expression.Binary(operator, left, right);
         }
 
@@ -523,17 +630,21 @@ public final class Parser {
      */
 
 
-
     public Ast.Expression parsePrimaryExpression() throws ParseException
     {
         if (match("NIL"))
             return new Ast.Expression.Literal(null);
+            //return parselitExpression(1);
 
         else if (match("TRUE"))
             return new Ast.Expression.Literal(true);
+            //return parselitExpression(1);
+
 
         else if (match("FALSE"))
             return new Ast.Expression.Literal(false);
+            //return parselitExpression(1);
+
 
         else if (match(Token.Type.INTEGER))
             return new Ast.Expression.Literal(new BigInteger(tokens.get(-1).getLiteral()));
@@ -553,6 +664,7 @@ public final class Parser {
             String literal = tokens.get(-1).getLiteral();
             String unquoted = literal.substring(1, literal.length() - 1).replace("\\n", "\n").replace("\\t", "\t");
             return new Ast.Expression.Literal(unquoted);
+            //return new Ast.Expression.Literal(literal);
         }
         else if (match(Token.Type.IDENTIFIER))
         {

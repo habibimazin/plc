@@ -29,7 +29,7 @@ public final class Lexer {
      */
     public List<Token> lex() {
         List<Token> list = new ArrayList<>();
-        while(peek(".")) {
+        while(peek(".") || peek("[\s|\b|\n|\t|\n]")) {
             if (match("[\s|\b|\n|\t|\r]")){
 
             }
@@ -144,6 +144,7 @@ public final class Lexer {
         }
         //int ind_new = chars.index;
         String lit = chars.input.substring(ind_old,ind_new);
+        match(lit);
         Token ret = new Token(idtype, lit, ind_old);
 
         return ret;
@@ -197,7 +198,7 @@ public final class Lexer {
                     throw new ParseException("Invalid string!", chars.index);
                 }
             }
-            else if (match("[A-Za-z0-9,!? ]")){
+            else if (match("[A-Za-z0-9,!?. ]")){
                 ind_new = ind_new+1;
                 if(!peek(".")){
                     throw new ParseException("Invalid string!", chars.index);
@@ -210,6 +211,7 @@ public final class Lexer {
         ind_new = ind_new+1;
 
         String lit = chars.input.substring(ind_old,ind_new);
+        //System.out.println(lit);
         Token ret = new Token(idtype, lit, ind_old);
         return ret;
     }
@@ -255,7 +257,8 @@ public final class Lexer {
         for (int i = 0; i < patterns.length; i++)
         {
             if(!chars.has(i) || !String.valueOf(chars.get(i)).matches(patterns[i])) {
-
+                //String x = String.valueOf(chars.get(i));
+                //String y = String.valueOf(chars.get(i));
                 return false;
             }
         }

@@ -3,11 +3,7 @@ package plc.project;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.*;
 
 public class Interpreter implements Ast.Visitor<Environment.PlcObject> {
 
@@ -30,44 +26,45 @@ public class Interpreter implements Ast.Visitor<Environment.PlcObject> {
         List<Ast.Global> globals = ast.getGlobals();
         List<Ast.Function> functions = ast.getFunctions();
 
+
         for(int i = 0; i<globals.size(); i++){
             visit(globals.get(i));
         }
-        //Ast.Function fun = ast.getFunctions();
         for(int i = 0; i<functions.size(); i++) {
             Ast.Function fun = functions.get(i);
-            Object name = fun.getName();
-            if(name.equals("main")){
-                for(int a = 0; a<fun.getStatements().size(); a++) {
-                    Ast.Statement statement = fun.getStatements().get(i);
-                    try {
-                        visit(statement);
-                    }
-                    catch (Return returnValue){
-                        return returnValue.value;
-                    }
-                }
-            }
-            else {
-                visit(fun);
-            }
+            visit(fun);
         }
 
+        String main = "main";
+        Environment.Function function = scope.lookupFunction(main, 0);
+        return function.invoke(Collections.emptyList());
 
 
-        return Environment.NIL;
+        /*
+        try {
+            Environment.Function function = scope.lookupFunction(main, 0);
+            return function.invoke(Collections.emptyList());
+        }
+        catch(RuntimeException e){
+            throw new RuntimeException("No main function defined!");
+        }
+
+         */
 
     }
 
     @Override
     public Environment.PlcObject visit(Ast.Global ast) {
+
+        boolean mut = ast.getMutable();
+
         if(ast.getValue().isPresent())
         {
-            scope.defineVariable(ast.getName(), true, visit(ast.getValue().get()));
+            scope.defineVariable(ast.getName(), mut, visit(ast.getValue().get()));
         }
         else
         {
-            scope.defineVariable(ast.getName(), false, Environment.NIL);
+            scope.defineVariable(ast.getName(), mut, Environment.NIL);
         }
         return Environment.NIL;
     }
@@ -77,26 +74,31 @@ public class Interpreter implements Ast.Visitor<Environment.PlcObject> {
 
         Scope currentScope = getScope();
 
-        scope.defineFunction(ast.getName(), ast.getParameters().size(), args -> {
-            scope = new Scope(getScope());
-            try {
-                for (int i = 0; i < ast.getParameters().size(); i++) {
-                    scope.defineVariable(ast.getParameters().get(i), true, args.get(i));
-                }
 
-                List<Ast.Statement> statements = ast.getStatements();
-                for (int i = 0; i < statements.size(); i++) {
-                    Ast.Statement statement = statements.get(i);
-                    visit(statement);
+
+            scope.defineFunction(ast.getName(), ast.getParameters().size(), args -> {
+                scope = new Scope(getScope());
+                try {
+                    for (int i = 0; i < ast.getParameters().size(); i++) {
+                        scope.defineVariable(ast.getParameters().get(i), true, args.get(i));
+                    }
+
+                    List<Ast.Statement> statements = ast.getStatements();
+                    for (int i = 0; i < statements.size(); i++) {
+                        Ast.Statement statement = statements.get(i);
+                        visit(statement);
+                    }
+                } catch (Return returnValue) {
+                    scope = currentScope;
+                    return returnValue.value;
                 }
-            }
-            catch (Return returnValue){
                 scope = currentScope;
-                return returnValue.value;
-            }
-            scope = currentScope;
-            return Environment.NIL;
-        });
+                return Environment.NIL;
+            });
+
+
+
+
 
         return Environment.NIL;
     }
@@ -111,10 +113,36 @@ public class Interpreter implements Ast.Visitor<Environment.PlcObject> {
         }
         else if(ast.getExpression().getClass().equals(Ast.Expression.Function.class)){
             exp = (Ast.Expression.Function) ast.getExpression();
+            if(true) {
+                Environment.Function function = scope.lookupFunction(exp.getName(), exp.getArguments().size());
+                List<Environment.PlcObject> obs = new ArrayList<>();
+                for (int i = 0; i<exp.getArguments().size(); i++){
+                    Environment.PlcObject ob;
+
+                    ob = visit(exp.getArguments().get(i));
+
+                    //ob = Environment.create(exp.getArguments());
+                    obs.add(ob);
+                }
+
+                function.invoke(obs);
+                return Environment.NIL;
+            }
+
             if(exp.getName().equals("print")){
+
                 for(int i = 0; i<exp.getArguments().size(); i++){
-                    Ast.Expression.Literal lit = (Ast.Expression.Literal) exp.getArguments().get(i);
-                    System.out.println(lit.getLiteral());
+                    Class<? extends Ast.Expression> t = exp.getArguments().get(i).getClass();
+                    if(t.getName().equals("plc.project.Ast$Expression$Access")){
+
+                    }
+                    else if(t.getName().equals("plc.project.Literal")){
+                        Ast.Expression.Literal lit = (Ast.Expression.Literal) exp.getArguments().get(i);
+                        System.out.println(lit.getLiteral());
+                        //Environment.PlcObject obk = new Environment.PlcObject(scope, lit);
+                        //return obk;
+                    }
+
                 }
             }
             else{
